@@ -37,7 +37,6 @@ R = torch.sqrt(X**2 + Y**2)  # ИСПРАВЛЕНО: было X2 + Y2
 
 def barenblatt_2d(r, t, C):
     """Точное решение Баренблатта"""
-    # ИСПРАВЛЕНО: добавлена строка создания t_tensor
     t_tensor = torch.tensor(t, dtype=r.dtype, device=r.device)
     val = C - (r**2) / (8.0 * torch.sqrt(t_tensor))
     return torch.sqrt(1.0 / t_tensor) * torch.clamp(val, min=0.0)
@@ -54,7 +53,7 @@ checkpoint_interval = TIME_STEPS // 20
 
 # Сохраняем 5 скриншотов: 0%, 20%, 40%, 60%, 80%
 save_percentages = [0, 20, 40, 60, 80]
-save_steps = [int(p / 100 * (TIME_STEPS)) for p in save_percentages]
+save_steps = [int(p / 100 * (TIME_STEPS - 1)) for p in save_percentages]
 
 history_t = []
 history_max_rho = []
@@ -128,7 +127,7 @@ def save_screenshot(frame, current_t, rho, history_t, history_error, filename):
     text_content = f"""
 НЕЛИНЕЙНОЕ УРАВНЕНИЕ ДИФФУЗИИ:
 
-∂ρ/∂t = ∇·(ρ∇ρ) = ½∇²(ρ²)
+∂ρ/∂t = ∇·(ρρ) = ½∇²(ρ²)
 
 ТОЧНОЕ РЕШЕНИЕ БАРЕНБЛАТТА:
 
@@ -264,7 +263,7 @@ im1 = ax1.imshow(rho_start.cpu().numpy(), cmap='magma',
 ax1.set_title(f"Начало: t = {T_START:.1f} (Max ρ = {rho_start.max().item():.4f})")
 ax1.set_xlabel("x")
 ax1.set_ylabel("y")
-fig.colorbar(im1, ax=ax1, label="Плотность ", shrink=0.8)
+fig.colorbar(im1, ax=ax1, label="Плотность ρ", shrink=0.8)
 
 # Кадр 2: Конечное состояние
 ax2 = fig.add_subplot(gs[0, 1])
@@ -306,7 +305,7 @@ ax_text.axis('off')
 text_content = f"""
 НЕЛИНЕЙНОЕ УРАВНЕНИЕ ДИФФУЗИИ:
 
-∂ρ/∂t = ∇·(ρ∇ρ) = ½∇²(ρ²)
+ρ/∂t = ∇·(ρ∇ρ) = ½∇²(ρ²)
 
 ТОЧНОЕ РЕШЕНИЕ БАРЕНБЛАТТА:
 
@@ -326,7 +325,7 @@ text_content = f"""
 • C = 10.0
 
 РЕЗУЛЬТАТЫ:
-• Начальная Max : {history_max_rho[0]:.4f}
+• Начальная Max ρ: {history_max_rho[0]:.4f}
 • Финальная Max ρ: {history_max_rho[-1]:.4f}
 • Ошибка L1: {history_error[-1]:.2e}
 • Время расчета: {time.time() - start_time:.1f} сек
@@ -346,16 +345,20 @@ ax_text.text(0.02, 0.98, text_content,
 
 plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, wspace=0.25, hspace=0.3)
 
+# ВАЖНО: Сначала сохраняем, потом показываем!
+plt.savefig('barenblatt_final_with_text.png', dpi=150, bbox_inches='tight')
+print("✓ Финальное изображение сохранено: barenblatt_final_with_text.png")
+
 plt.show()
 
 # ============================================================
-# 7. СОХРАНЕНИЕ И ИТОГОВЫЙ ОТЧЁТ
+# 7. ИТОГОВЫЙ ОТЧЁТ
 # ============================================================
 final_error = history_error[-1]
 final_max = history_max_rho[-1]
-print(f"\n Итоговые результаты:")
+print(f"\n🎯 Итоговые результаты:")
 print(f"   Начальная Max ρ: {history_max_rho[0]:.4f}")
-print(f"   Финальная Max ρ: {final_max:.4f}")
+print(f"   Финальная Max : {final_max:.4f}")
 print(f"   Финальная ошибка L1: {final_error:.6f}")
 
 if final_max < 0.23 and final_error < 0.01:
@@ -363,6 +366,4 @@ if final_max < 0.23 and final_error < 0.01:
 else:
     print("⚠ Проверьте параметры.")
 
-plt.savefig('barenblatt_final_with_text.png', dpi=150, bbox_inches='tight')
-print("✓ Финальное изображение сохранено: barenblatt_final_with_text.png")
 print(f"\n📁 Все скриншоты сохранены в папку: {screenshots_dir}/")
