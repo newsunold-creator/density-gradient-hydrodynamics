@@ -5,7 +5,9 @@ import sys
 import os
 from matplotlib.gridspec import GridSpec
 
+# ============================================================
 # 1. НАСТРОЙКИ
+# ============================================================
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Устройство: {DEVICE}")
 
@@ -19,20 +21,23 @@ C_BARENBLATT = 10.0
 DT = 0.05
 TIME_STEPS = int((T_END - T_START) / DT)
 
-print(f"Нелинейная схема: ∂ρ/∂t = ½²(ρ²)")
+print(f"Нелинейная схема: ∂ρ/∂t = ½∇²(ρ²)")
 print(f"Сетка: {GRID_SIZE}x{GRID_SIZE}")
 print(f"DT = {DT}, TIME_STEPS = {TIME_STEPS}")
 print(f"Временной интервал: t = {T_START:.1f} → {T_END:.1f}")
 print("=" * 75)
 
+# ============================================================
 # 2. ИНИЦИАЛИЗАЦИЯ
+# ============================================================
 x = torch.linspace(-GRID_SIZE//2, GRID_SIZE//2, GRID_SIZE, device=DEVICE)
 y = torch.linspace(-GRID_SIZE//2, GRID_SIZE//2, GRID_SIZE, device=DEVICE)
 X, Y = torch.meshgrid(x, y, indexing='ij')
-R = torch.sqrt(X**2 + Y**2)
+R = torch.sqrt(X**2 + Y**2)  # ИСПРАВЛЕНО: было X2 + Y2
 
 def barenblatt_2d(r, t, C):
     """Точное решение Баренблатта"""
+    # ИСПРАВЛЕНО: добавлена строка создания t_tensor
     t_tensor = torch.tensor(t, dtype=r.dtype, device=r.device)
     val = C - (r**2) / (8.0 * torch.sqrt(t_tensor))
     return torch.sqrt(1.0 / t_tensor) * torch.clamp(val, min=0.0)
@@ -42,11 +47,14 @@ rho = barenblatt_2d(R, T_START, C_BARENBLATT)
 print(f"Начало (t={T_START}): Max ρ = {rho.max().item():.4f}")
 print(f"Цель (t={T_END}):   Max ρ ≈ 0.2251")
 
+# ============================================================
 # 3. ПАРАМЕТРЫ ПРОГРЕССА И СОХРАНЕНИЯ
+# ============================================================
 checkpoint_interval = TIME_STEPS // 20
 
-save_percentages = [0, 20, 40, 60, 80, 100]
-save_steps = [int(p / 100 * TIME_STEPS) for p in save_percentages]
+# Сохраняем 5 скриншотов: 0%, 20%, 40%, 60%, 80%
+save_percentages = [0, 20, 40, 60, 80]
+save_steps = [int(p / 100 * (TIME_STEPS)) for p in save_percentages]
 
 history_t = []
 history_max_rho = []
@@ -58,12 +66,13 @@ screenshots_dir = "screenshots"
 os.makedirs(screenshots_dir, exist_ok=True)
 print(f"\nСкриншоты будут сохранены в папку: {screenshots_dir}/\n")
 
+# ============================================================
 # 4. ФУНКЦИЯ СОХРАНЕНИЯ СКРИНШОТА С COLORBAR
+# ============================================================
 def save_screenshot(frame, current_t, rho, history_t, history_error, filename):
     """Сохраняет полный скриншот с 4 панелями, colorbar и текстом"""
     fig = plt.figure(figsize=(20, 10))
     
-    # Уменьшаем ширину графиков, чтобы освободить место для colorbar
     gs = GridSpec(2, 3, figure=fig, width_ratios=[1, 1, 0.9], hspace=0.3, wspace=0.25)
     
     # Кадр 1: Начальное состояние
@@ -75,7 +84,6 @@ def save_screenshot(frame, current_t, rho, history_t, history_error, filename):
     ax1.set_title(f"Начало: t = {T_START:.1f} (Max ρ = {rho_start.max().item():.4f})")
     ax1.set_xlabel("x")
     ax1.set_ylabel("y")
-    # ДОБАВЛЯЕМ COLORBAR
     fig.colorbar(im1, ax=ax1, label="Плотность ρ", shrink=0.8)
     
     # Кадр 2: Текущее состояние
@@ -87,7 +95,6 @@ def save_screenshot(frame, current_t, rho, history_t, history_error, filename):
     ax2.set_title(f"Текущее: t = {current_t:.1f} (Max ρ = {max_current:.4f})")
     ax2.set_xlabel("x")
     ax2.set_ylabel("y")
-    # ДОБАВЛЯЕМ COLORBAR
     fig.colorbar(im2, ax=ax2, label="Плотность ρ", shrink=0.8)
     
     # Кадр 3: Сравнение с Баренблаттом
@@ -162,10 +169,13 @@ max(ρ) монотонно убывает →
     plt.close()
     print(f"✓ Сохранен скриншот: {filename}")
 
+# ============================================================
 # 5. ГЛАВНЫЙ ЦИКЛ
+# ============================================================
 print("Запуск долгосрочной симуляции...\n")
 
 for frame in range(TIME_STEPS):
+    # Ключевое тождество: ∇·(ρ∇ρ) = ½∇²(ρ²)
     rho_squared = rho ** 2
     
     laplacian_rho2 = (
@@ -179,6 +189,7 @@ for frame in range(TIME_STEPS):
     rho = rho + 0.5 * DT * laplacian_rho2
     rho = torch.clamp(rho, min=0.0)
     
+    # Проверка на NaN
     if torch.isnan(rho).any() or torch.isinf(rho).any():
         print(f"\n❌ ОШИБКА: NaN/Inf на шаге {frame}! Остановка.")
         break
@@ -229,7 +240,16 @@ print("\n" + "=" * 75)
 print(f"✓ Симуляция успешно завершена!")
 print(f"Общее время вычислений: {time.time() - start_time:.1f} сек")
 
+# ============================================================
+# Сохраняем финальный скриншот (100%) через ту же функцию
+# ============================================================
+print(f"\n📸 Сохранение финального скриншота на 100% (t = {T_END:.1f})...")
+final_filename = os.path.join(screenshots_dir, f"screenshot_100pct_t{int(T_END)}.png")
+save_screenshot(TIME_STEPS - 1, T_END, rho, history_t, history_error, final_filename)
+
+# ============================================================
 # 6. ФИНАЛЬНАЯ ВИЗУАЛИЗАЦИЯ С COLORBAR
+# ============================================================
 print("\nПостроение финального графика...")
 fig = plt.figure(figsize=(20, 10))
 
@@ -244,7 +264,7 @@ im1 = ax1.imshow(rho_start.cpu().numpy(), cmap='magma',
 ax1.set_title(f"Начало: t = {T_START:.1f} (Max ρ = {rho_start.max().item():.4f})")
 ax1.set_xlabel("x")
 ax1.set_ylabel("y")
-fig.colorbar(im1, ax=ax1, label="Плотность ρ", shrink=0.8)
+fig.colorbar(im1, ax=ax1, label="Плотность ", shrink=0.8)
 
 # Кадр 2: Конечное состояние
 ax2 = fig.add_subplot(gs[0, 1])
@@ -306,7 +326,7 @@ text_content = f"""
 • C = 10.0
 
 РЕЗУЛЬТАТЫ:
-• Начальная Max ρ: {history_max_rho[0]:.4f}
+• Начальная Max : {history_max_rho[0]:.4f}
 • Финальная Max ρ: {history_max_rho[-1]:.4f}
 • Ошибка L1: {history_error[-1]:.2e}
 • Время расчета: {time.time() - start_time:.1f} сек
@@ -328,10 +348,12 @@ plt.subplots_adjust(left=0.05, right=0.95, top=0.95, bottom=0.05, wspace=0.25, h
 
 plt.show()
 
-# 7. СОХРАНЕНИЕ
+# ============================================================
+# 7. СОХРАНЕНИЕ И ИТОГОВЫЙ ОТЧЁТ
+# ============================================================
 final_error = history_error[-1]
 final_max = history_max_rho[-1]
-print(f"\n🎯 Итоговые результаты:")
+print(f"\n Итоговые результаты:")
 print(f"   Начальная Max ρ: {history_max_rho[0]:.4f}")
 print(f"   Финальная Max ρ: {final_max:.4f}")
 print(f"   Финальная ошибка L1: {final_error:.6f}")
